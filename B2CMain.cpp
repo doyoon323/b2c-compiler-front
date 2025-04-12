@@ -93,6 +93,8 @@ class SymbolTableVisitor : public BBaseVisitor {
 private:
    int scopeLevel;
    string curFuncName;
+   stack<int> blockIndexStack;
+   int blockCounter = 0;
 public:
 	// Building symbol tables by visiting tree
 
@@ -135,7 +137,7 @@ public:
 		// You can retrieve the variable names and constants using ctx->name(i) and ctx->constant(i)
 		for (int i=0, j=0; i < ctx->name().size(); i++) {
 			//AUTO name (ASSN constant)? (',' name (ASSN constant)?) * SEMI
-			string varName = ctx->name(0)->getText();
+			string varName = ctx->name(i)->getText();
 			if (stab->symbolExists(varName)) continue;
 			enum Types varType = tyAUTO;				// default type
 
@@ -168,10 +170,11 @@ public:
 			return nullptr;
 		}
 		stab->addSymbol(funcName, attr);
+		symTabs[funcName] = new SymbolTable();
 		
 		//argument
 		for (int i=1;i<ctx->AUTO().size();i++){
-			string varName = ctx->name() ->getText();
+			string varName = ctx->name(i) ->getText();
 			if (stab->symbolExists(varName)) continue;
 			enum Types varType = tyAUTO;
 			
@@ -214,23 +217,21 @@ public:
 
 	//visitBlockstmt
 	any visitBlockstmt(BParser:: BlockstmtContext *ctx) override {
-		static int count =0;
+		blockCounter++;
+		blockIndexStack.push(blockCounter);
+		string newScope = currentScopeName();
+		symTabs[newScope] = new SymbolTable();
 		string prevFunc = curFuncName;
-		scopeLevel++; 
-		count++; 
-
-		if (scopeLevel > 1){
-			SymbolTable* blockSymTab = new SymbolTable();
-			curFuncName = prevFunc + "_$" + to_string(count);
-			symTabs[curFuncName] = blockSymTab;
-		}
-		SymbolTable* stab = symTabs[curFuncName];
-
+		
+		curFuncName = newScope;
+		//scopeLevel++; 
+		//count++; 
 		// visit children
     	for (int i=0; i< ctx->children.size(); i++) {
     		visit(ctx->children[i]);
     	} //type에 맞춰 자동으로 visitAutosmt 등을 해줌 
-		scopeLevel--;
+		blockIndexStack.pop();
+		//scopeLevel--;
 		curFuncName = prevFunc;
 		return nullptr;
 	}
@@ -243,9 +244,11 @@ public:
 
 	//visitIfstmt
 	any visitIfstmt(BParser:: IfstmtContext *ctx) override {
-		//
+		
 		visit(ctx->statement(0));
-		visit(ctx->statement(1));
+		if (ctx->statement().size() > 1) {
+			visit(ctx->statement(1));
+		}
 		return nullptr;
 	}
 	
