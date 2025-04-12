@@ -135,7 +135,7 @@ public:
 		// You can retrieve the variable names and constants using ctx->name(i) and ctx->constant(i)
 		for (int i=0, j=0; i < ctx->name().size(); i++) {
 			//AUTO name (ASSN constant)? (',' name (ASSN constant)?) * SEMI
-			string varName = ctx->name(i)->getText();
+			string varName = ctx->name(0)->getText();
 			if (stab->symbolExists(varName)) continue;
 			enum Types varType = tyAUTO;				// default type
 
@@ -158,22 +158,25 @@ public:
 	//visitDeclstmt
 	any visitDeclstmt(BParser:: DeclstmtContext *ctx) override {
 		SymbolTable *stab = symTabs[curFuncName];
-		enum Types returnType = tyAUTO;
-		string funcName = ctx->name(0)->getText();
+		string funcName = ctx->name()->getText();
+
+		SymbolAttributes attr;
+		attr.type = tyFUNCTION;
+		attr.retArgTypes.push_back(tyAUTO);
 		
 		if (stab->symbolExists(funcName)) {
 			return nullptr;
 		}
-		stab-> addSymbol(funcName,{tyFUNCTION, [returnType]});
+		stab->addSymbol(funcName, attr);
 		
 		//argument
-		for (int i=1;i<ctx->name().size();i++){
-			string argName = ctx->name(i) ->getText();
-			if (stab->symbolExists(argName)) continue;
+		for (int i=1;i<ctx->AUTO().size();i++){
+			string varName = ctx->name() ->getText();
+			if (stab->symbolExists(varName)) continue;
 			enum Types varType = tyAUTO;
 			
 			if (!stab->symbolExists(varName)) {
-				stab->addSymbol(argName, {varType});
+				stab->addSymbol(varName, {varType});
 			}
 		}
 		return nullptr;
@@ -249,7 +252,7 @@ public:
 	//visitWhilestmt
 	any visitWhilestmt(BParser:: WhilestmtContext *ctx) override {
 		//WHILE '(' expr ')' statement
-		visit(ctx->statement(0)); //parsing 제대로 했다면 block으로 가겠지? 
+		visit(ctx->statement()); //parsing 제대로 했다면 block으로 가겠지? 
 		return nullptr;
 	}
 
