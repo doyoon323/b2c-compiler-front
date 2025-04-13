@@ -91,10 +91,10 @@ map<string, SymbolTable*> symTabs;
 
 class SymbolTableVisitor : public BBaseVisitor {
 private:
+   string baseFuncName;
    int scopeLevel;
    string curFuncName;
-   stack<int> blockIndexStack;
-   int blockCounter = 0;
+   map<string, map<int,int>> scopeCountMap;
 public:
 	// Building symbol tables by visiting tree
 
@@ -180,32 +180,42 @@ public:
 		return nullptr;
 	}
 
+	string makeScopeName() {
+		string name = baseFuncName;
+		for (int i=2;i<=scopeLevel; i++){
+			if (i==2) name +="_$"+to_string(scopeCountMap[baseFuncName][i]);
+			else name += "_" + to_string(scopeCountMap[baseFuncName][i]);
+		}
+		return name;
+	}
 
 	//visitFuncdef
 	any visitFuncdef(BParser:: FuncdefContext *ctx) override {
-		string funcName = ctx->name(0)->getText();
-		if (!symTabs[_GlobalFuncName_]->symbolExists(funcName)) {
+		baseFuncName = ctx->name(0)->getText();
+		curFuncName = baseFuncName;
+		scopeCountMap[baseFuncName].clear();
+
+		if (!symTabs[_GlobalFuncName_]->symbolExists(baseFuncName)) {
 			SymbolAttributes attr;
     		attr.type = tyFUNCTION;
     		attr.retArgTypes.push_back(tyAUTO); 
 			for (int i=1;i<ctx->AUTO().size();i++){
 				attr.retArgTypes.push_back(tyAUTO);
 			}
-			symTabs[_GlobalFuncName_]->addSymbol(funcName,attr);
+			symTabs[_GlobalFuncName_]->addSymbol(baseFuncName,attr);
 		}
 		else {
-			SymbolAttributes prev = symTabs[_GlobalFuncName_]->getSymbolAttributes(funcName);
+			SymbolAttributes prev = symTabs[_GlobalFuncName_]->getSymbolAttributes(baseFuncName);
 			vector<Types> currentRetArgTypes = {tyAUTO};
 
 			for (int i = 1; i < ctx->AUTO().size(); i++) {
 				currentRetArgTypes.push_back(tyAUTO);
 			}
 			if (prev.retArgTypes != currentRetArgTypes) {
-				cerr << "Error: Conflict" << funcName  << endl;
+				cerr << "Error: Conflict" << baseFuncName  << endl;
 				return nullptr;
 			}
 		}
-		curFuncName = funcName;
 		symTabs[curFuncName] = new SymbolTable();
 		SymbolTable *stab = symTabs[curFuncName];		
 		
@@ -214,7 +224,7 @@ public:
 			enum Types varType = tyAUTO;
 			
 			if(stab->symbolExists(argName)){
-				cerr << "Multiple Error" << funcName << endl;
+				cerr << "Multiple Error" << curFuncName << endl;
 				continue;
 			}
 			stab -> addSymbol(argName, {varType});
@@ -222,49 +232,61 @@ public:
 		visit(ctx->blockstmt());
 		return nullptr;
 	}
-
+	
 	//visitBlockstmt
 	any visitBlockstmt(BParser:: BlockstmtContext *ctx) override {
-		scopeLevel++; //curFuncName = func의 이름
 		string prev = curFuncName;
-		if(scopeLevel>1){
-			string scopeName = curFuncName + "_$" + to_string(scopeLevel - 1);
-			symTabs[scopeName] = new SymbolTable();
-			curFuncName = scopeName;
+		scopeLevel++;
+		
+		if (scopeLevel>1){
+			scopeCountMap[baseFuncName][scopeLevel]++;
+			curFuncName = makeScopeName();
+			symTabs[curFuncName] = new SymbolTable();
 		}
-		for (auto stmt : ctx->statement()) {
-			visit(stmt);
+		
+		for (auto stmt : ctx->statement()){
+			 visit(stmt);
 		}
-		scopeLevel--;
 		curFuncName = prev;
+		scopeLevel--;
 		return nullptr;
-	}
+}
 
-	//visitStatement
-	any visitStatement(BParser:: StatementContext *ctx) override {
-		visit(ctx->children[0]);
-		return nullptr;
-	}
+//visitStatement
+any visitStatement(BParser:: StatementContext *ctx) override {
+	visit(ctx->children[0]);
+	return nullptr;
+}
 
-	//visitIfstmt
-	any visitIfstmt(BParser:: IfstmtContext *ctx) override {
+//visitIfstmt
+any visitIfstmt(BParser:: IfstmtContext *ctx) override {
+	if (ctx->statement(0) ->blockstmt()){
+		visit(ctx->statement(0)->blockstmt());
+	} else{
 		visit(ctx->statement(0));
-		if (ctx->statement().size() > 1) {
+	}
+
+	if (ctx->statement().size() > 1) {
+		if(ctx->statement(1)->blockstmt()){
+
+			visit(ctx->statement(1)->blockstmt());
+		}else{
 			visit(ctx->statement(1));
 		}
-		return nullptr;
 	}
-	
-	//visitWhilestmt
-	any visitWhilestmt(BParser:: WhilestmtContext *ctx) override {
-		//WHILE '(' expr ')' statement
-		visit(ctx->statement()); //parsing 제대로 했다면 block으로 가겠지? 
-		return nullptr;
-	}
-	
+	return nullptr;
+}
 
-    any visitConstant(BParser::ConstantContext *ctx) override {
-		if (ctx->INT()) return tyINT;
+//visitWhilestmt
+any visitWhilestmt(BParser:: WhilestmtContext *ctx) override {
+	//WHILE '(' expr ')' statement
+	visit(ctx->statement()); //parsing 제대로 했다면 block으로 가겠지? 
+	return nullptr;
+}
+
+
+any visitConstant(BParser::ConstantContext *ctx) override {
+	if (ctx->INT()) return tyINT;
 		else if (ctx->REAL()) return tyDOUBLE;
 		else if (ctx->STRING()) return tySTRING;
 		else if (ctx->BOOL()) return tyBOOL;
