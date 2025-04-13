@@ -45,6 +45,7 @@ public:
             return table.at(name);
         } else {
             cout << "Error: Symbol " << name << " not found" << endl;
+	    exit(1);
         }
     }
 
@@ -191,9 +192,9 @@ public:
 				attr.retArgTypes.push_back(tyAUTO);
 			}
 			symTabs[_GlobalFuncName_]->addSymbol(funcName,attr);
-		
+		}
 		else {
-			SymbolAttributes prev = symTabs[_GlobalFuncName_]->getSymbol(funcName);
+			SymbolAttributes prev = symTabs[_GlobalFuncName_]->getSymbolAttributes(funcName);
 			vector<Types> currentRetArgTypes = {tyAUTO};
 
 			for (int i = 1; i < ctx->AUTO().size(); i++) {
@@ -224,22 +225,18 @@ public:
 
 	//visitBlockstmt
 	any visitBlockstmt(BParser:: BlockstmtContext *ctx) override {
-		blockCounter++;
-		blockIndexStack.push(blockCounter);
-		string newScope = currentScopeName();
-		symTabs[newScope] = new SymbolTable();
-		string prevFunc = curFuncName;
-		
-		curFuncName = newScope;
-		//scopeLevel++; 
-		//count++; 
-		// visit children
-    	for (int i=0; i< ctx->children.size(); i++) {
-    		visit(ctx->children[i]);
-    	} //type에 맞춰 자동으로 visitAutosmt 등을 해줌 
-		blockIndexStack.pop();
-		//scopeLevel--;
-		curFuncName = prevFunc;
+		scopeLevel++; //curFuncName = func의 이름
+		string prev = curFuncName;
+		if(scopeLevel>1){
+			string scopeName = curFuncName + "_$" + to_string(scopeLevel - 1);
+			symTabs[scopeName] = new SymbolTable();
+			curFuncName = scopeName;
+		}
+		for (auto stmt : ctx->statement()) {
+			visit(stmt);
+		}
+		scopeLevel--;
+		curFuncName = prev;
 		return nullptr;
 	}
 
