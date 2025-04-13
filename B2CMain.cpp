@@ -75,7 +75,6 @@ public:
     }
 };
 
-
 //parse Tree를 방문하면서, 변수와 함수정보를 심볼테이블에 담는 과정. 
 // 
 
@@ -136,9 +135,11 @@ public:
 
 		// You can retrieve the variable names and constants using ctx->name(i) and ctx->constant(i)
 		for (int i=0, j=0; i < ctx->name().size(); i++) {
-			//AUTO name (ASSN constant)? (',' name (ASSN constant)?) * SEMI
 			string varName = ctx->name(i)->getText();
-			if (stab->symbolExists(varName)) continue;
+			if (stab->symbolExists(varName)) {
+				cerr << "Multiple Error" << varName << endl;
+				continue;
+			}
 			enum Types varType = tyAUTO;				// default type
 
 			// if initialized, get constant type
@@ -159,58 +160,64 @@ public:
 
 	//visitDeclstmt
 	any visitDeclstmt(BParser:: DeclstmtContext *ctx) override {
-		SymbolTable *stab = symTabs[curFuncName];
-		string funcName = ctx->name()->getText();
-
+		SymbolTable *stab = symTabs[curFuncName]; //dec과 funcdef는 global에 존재. 
+		string funcName = ctx->name()->getText(); //name 1개.
+		
 		SymbolAttributes attr;
 		attr.type = tyFUNCTION;
-		attr.retArgTypes.push_back(tyAUTO);
+		attr.retArgTypes.push_back(tyAUTO); //return type 
 		
-		if (stab->symbolExists(funcName)) {
+		if (stab->symbolExists(funcName)) { 
+			cerr << "Multiple Error" << funcName << endl;
 			return nullptr;
-		}
-		stab->addSymbol(funcName, attr);
-		symTabs[funcName] = new SymbolTable();
-		
+		}	
 		//argument
 		for (int i=1;i<ctx->AUTO().size();i++){
-			string varName = ctx->name(i) ->getText();
-			if (stab->symbolExists(varName)) continue;
-			enum Types varType = tyAUTO;
-			
-			if (!stab->symbolExists(varName)) {
-				stab->addSymbol(varName, {varType});
-			}
+			attr.retArgTypes.push_back(tyAUTO);
 		}
+		stab->addSymbol(funcName,attr);
 		return nullptr;
 	}
 
 
-	
 	//visitFuncdef
 	any visitFuncdef(BParser:: FuncdefContext *ctx) override {
 		string funcName = ctx->name(0)->getText();
-		SymbolAttributes attr;
-    	attr.type = tyFUNCTION;
-    	attr.retArgTypes.push_back(tyAUTO); // return type (일단 auto)
-
-		if (symTabs[_GlobalFuncName_]->symbolExists(funcName)) {
-    		return nullptr;
-		}
-		symTabs[_GlobalFuncName_]->addSymbol(funcName, attr);
-		curFuncName = funcName;
-    	symTabs[curFuncName] = new SymbolTable();
-		SymbolTable *stab = symTabs[curFuncName];
+		if (!symTabs[_GlobalFuncName_]->symbolExists(funcName)) {
+			SymbolAttributes attr;
+    		attr.type = tyFUNCTION;
+    		attr.retArgTypes.push_back(tyAUTO); 
+			for (int i=1;i<ctx->AUTO().size();i++){
+				attr.retArgTypes.push_back(tyAUTO);
+			}
+			symTabs[_GlobalFuncName_]->addSymbol(funcName,attr);
 		
+		else {
+			SymbolAttributes prev = symTabs[_GlobalFuncName_]->getSymbol(funcName);
+			vector<Types> currentRetArgTypes = {tyAUTO};
+
+			for (int i = 1; i < ctx->AUTO().size(); i++) {
+				currentRetArgTypes.push_back(tyAUTO);
+			}
+			if (prev.retArgTypes != currentRetArgTypes) {
+				cerr << "Error: Conflict" << funcName  << endl;
+				return nullptr;
+			}
+		}
+		curFuncName = funcName;
+		symTabs[curFuncName] = new SymbolTable();
+		SymbolTable *stab = symTabs[curFuncName];		
 		
 		for (int i=1;i < ctx->name().size();i++){			
 			string argName = ctx->name(i) ->getText();
 			enum Types varType = tyAUTO;
 			
-			//이미 존재하는 argName이라면, ERROR출력 
+			if(stab->symbolExists(argName)){
+				cerr << "Multiple Error" << funcName << endl;
+				continue;
+			}
 			stab -> addSymbol(argName, {varType});
 		}
-
 		visit(ctx->blockstmt());
 		return nullptr;
 	}
@@ -244,7 +251,6 @@ public:
 
 	//visitIfstmt
 	any visitIfstmt(BParser:: IfstmtContext *ctx) override {
-		
 		visit(ctx->statement(0));
 		if (ctx->statement().size() > 1) {
 			visit(ctx->statement(1));
@@ -258,8 +264,6 @@ public:
 		visit(ctx->statement()); //parsing 제대로 했다면 block으로 가겠지? 
 		return nullptr;
 	}
-
-
 	
 
     any visitConstant(BParser::ConstantContext *ctx) override {
